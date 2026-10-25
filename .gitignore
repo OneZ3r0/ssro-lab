@@ -1,0 +1,8 @@
+*
+
+!*/
+
+!/.gitignore
+!*.yaml
+!Dockerfile
+!/backend/main.py

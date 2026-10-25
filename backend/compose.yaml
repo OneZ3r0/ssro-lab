@@ -1,0 +1,12 @@
+name: ssro-lab-backend
+
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [lab]
+
+networks:
+  lab:
+    name: ssro-lab
