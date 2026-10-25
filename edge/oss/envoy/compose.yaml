@@ -1,20 +1,17 @@
-name: ssro-lab-oss
+name: ssro-lab-envoy
 
 services:
   envoy:
-    image: envoyproxy/envoy:v1.34.1
+    image: envoyproxy/envoy:v1.40.1
     command: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "info"]
-    environment:
-      ENVOY_UID: ${ENVOY_UID:-1000}
-      ENVOY_GID: ${ENVOY_GID:-1000}
     ports:
-      - "${EDGE_BIND_IP:-127.0.0.1}:443:443/udp"
+      - "443:10000/udp"
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ../certs:/etc/envoy/certs:ro
-    networks: [backend]
+      # The private key must be readable by the image's envoy group (GID 101).
+      - /etc/ssro-lab/tls/oss:/etc/envoy/certs:ro
+    networks: [ssro-lab]
 
 networks:
-  backend:
+  ssro-lab:
     external: true
-    name: ssro-lab

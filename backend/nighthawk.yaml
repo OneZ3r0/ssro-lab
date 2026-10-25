@@ -1,0 +1,70 @@
+# Shared TLS/HTTP/1.1 origin for direct, OSS, and CDN requests.
+admin:
+  address:
+    socket_address: {address: 0.0.0.0, port_value: 10001}
+
+static_resources:
+  listeners:
+    - name: origin
+      address:
+        socket_address: {address: 0.0.0.0, port_value: 10080}
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                alpn_protocols: ["http/1.1"]
+                tls_certificates:
+                  - certificate_chain: {filename: /certs/fullchain.pem}
+                    private_key: {filename: /certs/privkey.pem}
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: origin
+                codec_type: HTTP1
+                generate_request_id: false
+                route_config:
+                  name: origin
+                  virtual_hosts:
+                    - name: origin
+                      domains: ["*"]
+                access_log:
+                  - name: envoy.access_loggers.file
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                      path: /logs/requests.jsonl
+                      log_format:
+                        json_format:
+                          role: "origin"
+                          proxy: "nighthawk"
+                          run_id: "%REQ(X-SSRO-RUN-ID)%"
+                          request_id: "%REQ(X-SSRO-REQUEST-ID)%"
+                          authority: "%REQ(:AUTHORITY)%"
+                          # Keep epoch seconds as a string to preserve all nine fractional digits.
+                          start_time: "%START_TIME(%s.%9f)%"
+                          protocol: "%PROTOCOL%"
+                          status: "%RESPONSE_CODE%"
+                          bytes_received: "%BYTES_RECEIVED%"
+                          receive_duration_ns: "%COMMON_DURATION(DS_RX_BEG:DS_RX_END:ns)%"
+                          duration_ns: "%COMMON_DURATION(DS_RX_BEG:DS_TX_END:ns)%"
+                          previous_request_delta_ns: "%RESP(X-ORIGIN-REQUEST-RECEIPT-DELTA)%"
+                          response_flags: "%RESPONSE_FLAGS%"
+                http_filters:
+                  # Monotonic interval between filter creations, not completed request bodies.
+                  # Shared across this listener; the previous request may belong to another run.
+                  - name: time-tracking
+                    typed_config:
+                      "@type": type.googleapis.com/nighthawk.server.TimeTrackingConfiguration
+                      emit_previous_request_delta_in_response_header: x-origin-request-receipt-delta
+                  - name: test-server
+                    typed_config:
+                      "@type": type.googleapis.com/nighthawk.server.ResponseOptions
+                      response_body_size: 10
+                      v3_response_headers:
+                        - header: {key: cache-control, value: no-store}
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                      dynamic_stats: false

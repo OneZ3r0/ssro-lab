@@ -1,12 +1,24 @@
 name: ssro-lab-backend
 
 services:
-  app:
-    build: .
+  nighthawk:
+    image: envoyproxy/nighthawk-dev:latest
+    command: >-
+      -c /etc/nighthawk/nighthawk.yaml
+      --concurrency 1
+      --disable-hot-restart
+      --log-level warn
+      --file-flush-interval-msec 1000
     ports:
-      - "127.0.0.1:8000:8000"
-    networks: [lab]
+      - "443:10080/tcp"
+      - "127.0.0.1:10001:10001"
+    volumes:
+      - ./nighthawk.yaml:/etc/nighthawk/nighthawk.yaml:ro
+      # Multi-domain certificate installed by acme.sh.
+      - /etc/ssro-lab/tls:/certs:ro
+      - ../results/backend:/logs
+    networks: [ssro-lab]
 
 networks:
-  lab:
+  ssro-lab:
     name: ssro-lab

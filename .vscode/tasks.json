@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Sync to VPS",
+            "type": "process",
+            "command": "rsync",
+            "args": [
+                "-avz",
+                "--exclude=.git*",
+                "--exclude=/client/",
+                "${workspaceFolder}/",
+                "${input:sshHost}:ssro-lab/"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "sshHost",
+            "type": "promptString",
+            "description": "SSH Host alias from ~/.ssh/config"
+        }
+    ]
+}

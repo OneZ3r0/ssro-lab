@@ -4,5 +4,9 @@
 
 !/.gitignore
 !*.yaml
-!Dockerfile
-!/backend/main.py
+!/backend
+!/README.md
+!/.vscode/tasks.json
+
+# Local TimeOrch checkout; remove this rule when adding it as a submodule.
+/client/

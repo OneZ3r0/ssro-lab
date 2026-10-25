@@ -1,11 +1,12 @@
 static_resources:
   listeners:
+    # Client-facing HTTP/3 listener; Compose publishes host UDP/443 here.
     - name: http3
       address:
         socket_address:
           protocol: UDP
           address: 0.0.0.0
-          port_value: 443
+          port_value: 10000
       udp_listener_config:
         quic_options: {}
       filter_chains:
@@ -18,41 +19,84 @@ static_resources:
                   alpn_protocols: ["h3"]
                   tls_certificates:
                     - certificate_chain:
-                        filename: /etc/envoy/certs/localhost.pem
+                        filename: /etc/envoy/certs/fullchain.pem
                       private_key:
-                        filename: /etc/envoy/certs/localhost-key.pem
+                        filename: /etc/envoy/certs/privkey.pem
           filters:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 codec_type: HTTP3
                 stat_prefix: http3
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        json_format:
+                          role: "edge"
+                          proxy: "envoy"
+                          run_id: "%REQ(X-SSRO-RUN-ID)%"
+                          request_id: "%REQ(X-SSRO-REQUEST-ID)%"
+                          authority: "%REQ(:AUTHORITY)%"
+                          start_time: "%START_TIME(%s.%9f)%"
+                          protocol: "%PROTOCOL%"
+                          status: "%RESPONSE_CODE%"
+                          # Offsets from this request's start, not absolute timestamps.
+                          receive_duration_ns: "%COMMON_DURATION(DS_RX_BEG:DS_RX_END:ns)%"
+                          upstream_send_start_ns: "%COMMON_DURATION(DS_RX_BEG:US_TX_BEG:ns)%"
+                          upstream_send_end_ns: "%COMMON_DURATION(DS_RX_BEG:US_TX_END:ns)%"
+                          duration_ns: "%COMMON_DURATION(DS_RX_BEG:DS_TX_END:ns)%"
+                          bytes_received: "%BYTES_RECEIVED%"
+                          bytes_sent: "%BYTES_SENT%"
+                          upstream_host: "%UPSTREAM_HOST%"
+                          upstream_protocol: "%UPSTREAM_PROTOCOL%"
+                          response_flags: "%RESPONSE_FLAGS%"
+                          response_code_details: "%RESPONSE_CODE_DETAILS%"
                 route_config:
-                  name: app_route
+                  name: oss_route
                   virtual_hosts:
-                    - name: app
+                    - name: oss
                       domains: ["*"]
                       routes:
                         - match:
                             prefix: /
                           route:
-                            cluster: app
+                            cluster: nighthawk
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   clusters:
-    - name: app
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
+    # TLS/HTTP/1.1 to the shared Nighthawk origin.
+    - name: nighthawk
+      cluster_type:
+        name: envoy.clusters.dns
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.clusters.dns.v3.DnsCluster
+          dns_lookup_family: V4_ONLY
       connect_timeout: 2s
       load_assignment:
-        cluster_name: app
+        cluster_name: nighthawk
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: app
-                      port_value: 8000
+                      address: nighthawk
+                      port_value: 10080
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: origin.onez3r0.top
+          common_tls_context:
+            alpn_protocols: ["http/1.1"]
+            validation_context:
+              trusted_ca:
+                filename: /etc/ssl/certs/ca-certificates.crt
+              match_typed_subject_alt_names:
+                - san_type: DNS
+                  matcher:
+                    exact: origin.onez3r0.top
